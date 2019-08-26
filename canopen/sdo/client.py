@@ -67,10 +67,11 @@ class SdoClient(SdoBase):
                 block=True, timeout=self.RESPONSE_TIMEOUT)
         except queue.Empty:
             raise SdoCommunicationError("No SDO response received")
-        res_command, = struct.unpack_from("B", response)
-        if res_command == RESPONSE_ABORTED:
-            abort_code, = struct.unpack_from("<L", response, 4)
-            raise SdoAbortedError(abort_code)
+        # why here ? just comment it out
+        # res_command, = struct.unpack_from("B", response)
+        # if res_command == RESPONSE_ABORTED:
+            # abort_code, = struct.unpack_from("<L", response, 4)
+            # raise SdoAbortedError(abort_code)
         return response
 
     def request_response(self, sdo_request):
@@ -116,6 +117,7 @@ class SdoClient(SdoBase):
         """
         fp = self.open(index, subindex, buffering=0)
         size = fp.size
+        # why just one read?
         data = fp.read()
         if size is None:
             # Node did not specify how many bytes to use
@@ -242,17 +244,20 @@ class ReadableStream(io.RawIOBase):
         SDO_STRUCT.pack_into(request, 0, REQUEST_UPLOAD, index, subindex)
         response = sdo_client.request_response(request)
         res_command, res_index, res_subindex = SDO_STRUCT.unpack_from(response)
+
+        while res_index != index or res_subindex != subindex:
+            logging.debug((
+                "Node returned a value for 0x{:X}:{:d} instead, "
+                "maybe there is another SDO client communicating "
+                "on the same SDO channel?").format(res_index, res_subindex))
+            # try with next response
+            response = sdo_client.read_response()
+            res_command, res_index, res_subindex = SDO_STRUCT.unpack_from(response)
+
         res_data = response[4:8]
 
         if res_command & 0xE0 != RESPONSE_UPLOAD:
             raise SdoCommunicationError("Unexpected response 0x%02X" % res_command)
-
-        # Check that the message is for us
-        if res_index != index or res_subindex != subindex:
-            raise SdoCommunicationError((
-                "Node returned a value for 0x{:X}:{:d} instead, "
-                "maybe there is another SDO client communicating "
-                "on the same SDO channel?").format(res_index, res_subindex))
 
         self.exp_data = None
         if res_command & EXPEDITED:
