@@ -100,7 +100,7 @@ class SdoClient(SdoBase):
                     if time.time()-s_time > self.RESPONSE_TIMEOUT:
                         raise SdoCommunicationError("No SDO response received")
 
-                return self.read_response(sdo_request)
+                return response
             except SdoCommunicationError as e:
                 retries_left -= 1
                 if not retries_left:
