@@ -61,7 +61,24 @@ class SdoClient(SdoBase):
             else:
                 break
 
-    def read_response(self):
+    def read_response(self, sdo_request):
+        comm,exp_index,exp_subindex, = struct.unpack_from("BHB", sdo_request)
+
+        s_time = time.time()
+        while True:
+            try:
+                response = self.responses.get(
+                    block=True, timeout=self.RESPONSE_TIMEOUT)
+            except queue.empty:
+                raise SdoCommunicationError("No SDO response received")
+
+            # check if the response is for the requested SDO
+            res_comm,index,subindex, = struct.unpack_from("BHB", response)
+            if index==exp_index and exp_subindex==subindex:
+                break
+
+            if time.time()-s_time > self.RESPONSE_TIMEOUT:
+                raise SdoCommunicationError("No SDO response received")
         try:
             response = self.responses.get(
                 block=True, timeout=self.RESPONSE_TIMEOUT)
@@ -83,7 +100,7 @@ class SdoClient(SdoBase):
             self.send_request(sdo_request)
             # Wait for node to respond
             try:
-                return self.read_response()
+                return self.read_response(sdo_request)
             except SdoCommunicationError as e:
                 retries_left -= 1
                 if not retries_left:
